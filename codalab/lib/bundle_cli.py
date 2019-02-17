@@ -114,6 +114,7 @@ BUNDLE_COMMANDS = (
     'search',
     'ls',
     'info',
+    'dependencies',
     'cat',
     'wait',
     'download',
@@ -2121,6 +2122,46 @@ class BundleCLI(object):
                     continue
                 print >>self.stdout, wrap(item['name'])
                 self.print_target_info(client, bundle_uuid, item['name'], head=10)
+
+    @Commands.command(
+        'dependencies',
+        help='Show nested dependencies for a bundle.',
+        arguments=(
+            Commands.Argument(
+                'bundle_spec', help=BUNDLE_SPEC_FORMAT, nargs='+', completer=BundlesCompleter
+            ),
+            Commands.Argument('-d', '--depth', type=int, help='Show nested dependencies until this depth.'),
+            Commands.Argument(
+                '-w',
+                '--worksheet-spec',
+                help='Operate on this worksheet (%s).' % WORKSHEET_SPEC_FORMAT,
+                completer=WorksheetsCompleter,
+            ),
+        ),
+    )
+    def do_dependencies_command(self, args):
+        args.bundle_spec = spec_util.expand_specs(args.bundle_spec)
+        client, worksheet_uuid = self.parse_client_worksheet_uuid(args.worksheet_spec)
+
+        self.print_dependencies(client, worksheet_uuid, args.bundle_spec, 0, args.depth)
+
+    def print_dependencies(self, client, worksheet_uuid, bundle_spec, depth, max_depth=None):
+        if len(bundle_spec) == 0 or (max_depth is not None and depth >= max_depth):
+            return
+
+        bundles = client.fetch(
+            'bundles',
+            params={
+                'specs': bundle_spec,
+                'worksheet': worksheet_uuid,
+            },
+        )
+
+        for i, info in enumerate(bundles):
+            print >>self.stdout, "%s %s(%s)" % ('\t' * depth, info['metadata']['name'], info['uuid'])
+
+            bundle_spec = [dep['parent_uuid'] for dep in info['dependencies']]
+            self.print_dependencies(client, worksheet_uuid, bundle_spec, depth+1, max_depth)
 
     @Commands.command(
         'mount',
